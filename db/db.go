@@ -6,6 +6,8 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
+type ExecFn func() error
+
 type Database interface {
 	// Get retrieves the value for the given `key`. If the `key` does not
 	// exist, returns the error `ErrNotFound`.
@@ -16,4 +18,10 @@ type Database interface {
 
 	// Set sets the `value` for the given `key`.
 	Set(key []byte, value []byte) error
+
+	// Close the database and release its resources.
+	Close() error
+
+	// Execut the given `fn` and atomically commit or discard all database changes.
+	ExecAtomicCommitOrDiscard(fn ExecFn) error
 }

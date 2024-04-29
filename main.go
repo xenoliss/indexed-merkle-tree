@@ -11,22 +11,29 @@ import (
 )
 
 func main() {
-	temp, _ := os.MkdirTemp("", "*")
-	defer os.RemoveAll(temp)
+	tmp, _ := os.MkdirTemp("", "*")
+	defer os.RemoveAll(tmp)
 
-	pebbleDb, err := pebble.Open(temp, &pebble.Options{})
+	pebbleDb, err := pebble.Open(tmp, &pebble.Options{})
 	if err != nil {
 		panic(err)
 	}
+	defer pebbleDb.Close()
 
 	db := db.NewPebbleDb(pebbleDb)
+	defer db.Close()
 
-	tree := imt.NewTree(db, 32, 32, hash)
-	err = tree.Insert(big.NewInt(5), big.NewInt(5))
+	tree := imt.NewTree(db, 32, 4, hash)
+
+	err = tree.Insert(big.NewInt(1), big.NewInt(5))
 	if err != nil {
 		panic(err)
 	}
 
+	err = tree.Insert(big.NewInt(4), big.NewInt(5))
+	if err != nil {
+		panic(err)
+	}
 }
 
 func hash(v []*big.Int) (*big.Int, error) {

@@ -3,6 +3,7 @@ package imt
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"imt/db"
 	"math/big"
 )
@@ -70,11 +71,20 @@ func (t *Tree) Root() (*big.Int, error) {
 }
 
 // Inserts a new `value` in the tree at the given `key`.
+// NOTE: Wrapper around `insert` that does the database atomic commit
+// or discard on error.
 func (t *Tree) Insert(key, value *big.Int) error {
+	return t.db.ExecAtomicCommitOrDiscard(func() error {
+		return t.insert(key, value)
+	})
+}
+
+// Inserts a new `value` in the tree at the given `key`.
+func (t *Tree) insert(key, value *big.Int) error {
 	// Ensure the key does not already exist.
 	_, err := t.db.Get(t.nodeKey(key))
 	if err == nil {
-		return errors.New("key already exists")
+		return fmt.Errorf("key %d already exists", key)
 	} else if !errors.Is(err, db.ErrNotFound) {
 		return err
 	}
