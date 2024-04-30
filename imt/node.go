@@ -3,7 +3,6 @@ package imt
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"math/big"
 )
 
@@ -13,13 +12,13 @@ type Node struct {
 	NextKey *big.Int
 }
 
-// Returns an empty node.
+// emptyNode returns an empty node.
 func emptyNode() *Node {
 	return &Node{Index: 0, Value: new(big.Int), NextKey: new(big.Int)}
 }
 
-// Deserialize a node from bytes.
-func NodeFromBytes(b []byte) (*Node, error) {
+// nodeFromBytes deserializes a node from bytes.
+func nodeFromBytes(b []byte) (*Node, error) {
 	i := binary.BigEndian.Uint64(b[0:8])
 
 	b = b[8:]
@@ -37,7 +36,17 @@ func NodeFromBytes(b []byte) (*Node, error) {
 	return &Node{Index: i, Value: v, NextKey: nK}, nil
 }
 
-// Serialize the node into bytes.
+// deepCopy returns a deep copy of the node.
+func (n *Node) deepCopy() *Node {
+	cp := &Node{}
+	cp.Index = n.Index
+	cp.Value = new(big.Int).Set(n.Value)
+	cp.NextKey = new(big.Int).Set(n.NextKey)
+
+	return cp
+}
+
+// bytes serializes the node into bytes.
 func (n *Node) bytes() []byte {
 	b := binary.BigEndian.AppendUint64([]byte{}, n.Index)
 
@@ -52,12 +61,7 @@ func (n *Node) bytes() []byte {
 	return b
 }
 
-// Debug print the node.
-func (n *Node) print(prefix string) {
-	fmt.Printf("%s Node{Index: %d, Value: %d, NextKey: %d}\n", prefix, n.Index, n.Value, n.NextKey)
-}
-
-// Returns the node's hash.
+// hash returns the node's hash.
 func (n *Node) hash(h HashFn) (*big.Int, error) {
 	return h([]*big.Int{new(big.Int).SetUint64(n.Index), n.Value, n.NextKey})
 }

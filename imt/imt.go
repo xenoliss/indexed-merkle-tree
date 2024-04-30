@@ -42,9 +42,62 @@ func NewTree(db db.Database, feLen, leafLevel uint8, hashFn HashFn) *Tree {
 	}
 }
 
+// Set sets the `value` for the given `key` in the tree. It returns a `MutateProof` corresponding
+// to the state update.
+func (t *Tree) Set(key, value *big.Int) (*MutateProof, error) {
+	// Check if the key already exists and if not set the `isInsertion` flag to true.
+	nodeBytes, err := t.db.Get(t.nodeKey(key))
+
+	// Return on unexpected errors.
+	if err != nil && !errors.Is(err, db.ErrNotFound) {
+		return nil, err
+	}
+
+	// If no error is returned, `nodeBytes` must not be nil.
+	// NOTE: This is a safe guard but it should never happen due to how `db.Database.Get` is implemented.
+	isInsertion := nodeBytes == nil
+	if err == nil && isInsertion {
+		return nil, fmt.Errorf("unexpected nil value for %v", key)
+	}
+
+	// Lookup the low nullifier node.
+	lnKey, lnNode, lnPreUpdateProof, err := t.lowNullifierNode(key)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build the node to set.
+	// NOTE: For insertion leave the default `Index` as it will be set to the updated tree size in `setNode`.
+	var node *Node
+	if isInsertion {
+		node = &Node{Value: value, NextKey: lnNode.NextKey}
+	} else {
+		node, err = nodeFromBytes(nodeBytes)
+		if err != nil {
+			return nil, err
+		}
+
+		node.Value = value
+	}
+
+	// Set the node.
+	nodeProof, err := t.setNode(key, node, isInsertion)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update the low nullifier node and save it in the database.
+	lnNode.NextKey = key
+	lnPostUpdateProof, err := t.setNode(lnKey, lnNode, false)
+	if err != nil {
+		return nil, err
+	}
+
+	return &MutateProof{LnPreUpdateProof: lnPreUpdateProof, NodeProof: nodeProof, LnPostUpdateProof: lnPostUpdateProof}, nil
+}
+
 // Return the tree root hash.
-// The returned hash is the hash of the root hash and the tree size.
-func (t *Tree) Root() (*big.Int, error) {
+func (t *Tree) root() (*big.Int, error) {
 	// Get the root hash from the database.
 	rootHash, err := t.db.Get(t.hashKey(0, 0))
 
@@ -55,72 +108,11 @@ func (t *Tree) Root() (*big.Int, error) {
 			return nil, err
 		}
 		rootHash = rootHashBn.Bytes()
-	}
-
-	if err != nil {
+	} else if err != nil {
 		return nil, err
 	}
 
-	// Return the hash of the root hash and the tree size.
-	size, err := t.size()
-	if err != nil {
-		return nil, err
-	}
-
-	return t.hashFn([]*big.Int{new(big.Int).SetBytes(rootHash), new(big.Int).SetUint64(size)})
-}
-
-// Inserts a new `value` in the tree at the given `key`.
-// NOTE: Wrapper around `insert` that does the database atomic commit
-// or discard on error.
-func (t *Tree) Insert(key, value *big.Int) error {
-	return t.db.ExecAtomicCommitOrDiscard(func() error {
-		return t.insert(key, value)
-	})
-}
-
-// Inserts a new `value` in the tree at the given `key`.
-func (t *Tree) insert(key, value *big.Int) error {
-	// Ensure the key does not already exist.
-	_, err := t.db.Get(t.nodeKey(key))
-	if err == nil {
-		return fmt.Errorf("key %d already exists", key)
-	} else if !errors.Is(err, db.ErrNotFound) {
-		return err
-	}
-
-	// Lookup the low nullifier node.
-	lnKey, lnNode, err := t.lowNullifierNode(key)
-	if err != nil {
-		return err
-	}
-
-	// Update the tree size and register it in the database.
-	size, err := t.size()
-	if err != nil {
-		return err
-	}
-	size += 1
-
-	if err := t.setSize(size); err != nil {
-		return err
-	}
-
-	// Create the new node and register it in the database.
-	// NOTE: `size` is incremented first so the 1st real node is at index 1 as expected.
-	// 		 The 0 index is reserved.
-	newNode := &Node{Index: size, Value: value, NextKey: lnNode.NextKey}
-	if _, err := t.setNode(key, newNode); err != nil {
-		return err
-	}
-
-	// Update the low nullifier node and save it in the database.
-	lnNode.NextKey = key
-	if _, err := t.setNode(lnKey, lnNode); err != nil {
-		return err
-	}
-
-	return nil
+	return new(big.Int).SetBytes(rootHash), nil
 }
 
 // Returns the key to store a node.
@@ -140,8 +132,8 @@ func (t *Tree) hashKey(level uint8, index uint64) []byte {
 	return binary.BigEndian.AppendUint64(prefix, index)
 }
 
-// Read the size of the tree from the database. Returns 0 if the `sizeKey` is
-// not yet registered.
+// size returns the size of the tree from the database.
+// Returns 0 if the `sizeKey` is not yet registered.
 func (t *Tree) size() (uint64, error) {
 	size, err := t.db.Get(sizeKey)
 	if errors.Is(err, db.ErrNotFound) {
@@ -155,65 +147,96 @@ func (t *Tree) size() (uint64, error) {
 	return new(big.Int).SetBytes(size).Uint64(), nil
 }
 
-// Fecth the low nuliffier node for the given `key`.
-func (t *Tree) lowNullifierNode(key *big.Int) (*big.Int, *Node, error) {
+// lowNullifierNode fecths the low nuliffier node for the given `key`.
+// It return the low nuliffier key and node and the `Proof` for it.
+func (t *Tree) lowNullifierNode(key *big.Int) (*big.Int, *Node, *Proof, error) {
 	// Fetch the tree size from the database.
 	size, err := t.size()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// If the size of the tree is empty return the 0 index node.
 	if size == 0 {
 		lnKey := new(big.Int).SetBytes(t.nodeKey(big.NewInt(0)))
-		return lnKey, emptyNode(), nil
+		lnNode := emptyNode()
+
+		// Build the ln node proof.
+		proof, err := t.nodeProof(lnNode)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		return lnKey, lnNode, proof, nil
 	}
 
 	// Ensure no error and non-empty node bytes.
 	lnKeyBytes, lnNodeBytes, err := t.db.GetLT(t.nodeKey(key))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if lnNodeBytes == nil {
-		return nil, nil, errors.New("unexpected nil low nullifier")
+		return nil, nil, nil, errors.New("unexpected nil low nullifier")
 	}
 
 	// Return the low nullifier key and node.
 	lnKey := new(big.Int).SetBytes(t.nodeKey(new(big.Int).SetBytes(lnKeyBytes)))
-	lnNode, err := NodeFromBytes(lnNodeBytes)
+	lnNode, err := nodeFromBytes(lnNodeBytes)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	return lnKey, lnNode, nil
+	// Build the ln node proof.
+	proof, err := t.nodeProof(lnNode)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return lnKey, lnNode, proof, nil
 }
 
 // Sets a node in the tree.
-func (t *Tree) setNode(key *big.Int, n *Node) ([]*big.Int, error) {
+// Returns a `Proof` fof the given node.
+func (t *Tree) setNode(key *big.Int, node *Node, isInstertion bool) (*Proof, error) {
+	size, err := t.size()
+	if err != nil {
+		return nil, err
+	}
+
+	// In case of insertion, increase the size of the tree and set the node `Index` to the it.
+	if isInstertion {
+		size += 1
+		if err := t.setSize(size); err != nil {
+			return nil, err
+		}
+
+		node.Index = size
+	}
+
 	// Register the new node in the database
-	if err := t.db.Set(t.nodeKey(key), n.bytes()); err != nil {
+	if err := t.db.Set(t.nodeKey(key), node.bytes()); err != nil {
 		return nil, err
 	}
 
 	// Hash the node.
-	h, err := n.hash(t.hashFn)
+	h, err := node.hash(t.hashFn)
 	if err != nil {
 		return nil, err
 	}
 
 	// Register the node's hash.
-	if err := t.db.Set(t.hashKey(t.leafLevel, n.Index), h.Bytes()); err != nil {
+	if err := t.db.Set(t.hashKey(t.leafLevel, node.Index), h.Bytes()); err != nil {
 		return nil, err
 	}
 
 	// Update the hashes up to the root.
 	siblingHashes := make([]*big.Int, t.leafLevel)
-	index := n.Index
+	index := node.Index
 	for level := t.leafLevel; level > 0; {
 		siblingIndex := index + 1 - (index%2)*2
 
-		// Fetch the sibling node hash from the Database
+		// Fetch the sibling node hash from the database
 		siblingHashBytes, err := t.db.Get(t.hashKey(level, siblingIndex))
 		if err != nil && !errors.Is(err, db.ErrNotFound) {
 			return nil, err
@@ -221,7 +244,10 @@ func (t *Tree) setNode(key *big.Int, n *Node) ([]*big.Int, error) {
 
 		siblingHash := new(big.Int).SetBytes(siblingHashBytes)
 
-		// Compute the merged hash.
+		// Save the sibling hash.
+		siblingHashes[level-1] = siblingHash
+
+		// Compute the parent hash.
 		if index%2 == 0 {
 			h, err = t.hashFn([]*big.Int{h, siblingHash})
 		} else {
@@ -235,24 +261,57 @@ func (t *Tree) setNode(key *big.Int, n *Node) ([]*big.Int, error) {
 		level--
 		index = index / 2
 
-		// Save the sibling hash.
-		siblingHashes[level] = siblingHash
-
 		if level == 0 && index != 0 {
 			return nil, errors.New("tree is over capacity")
 		}
 
-		// Register the merged hash
+		// Register the parent hash
 		if err := t.db.Set(t.hashKey(level, index), h.Bytes()); err != nil {
 			return nil, err
 		}
-
 	}
 
-	return siblingHashes, nil
+	// Return the sibling hashes and the final root hash.
+	p := &Proof{Root: h, Size: size, Node: node.deepCopy(), SiblingHashes: siblingHashes}
+	return p, nil
 }
 
 // Store the tree size in the database.
 func (t *Tree) setSize(s uint64) error {
 	return t.db.Set(sizeKey, new(big.Int).SetUint64(s).Bytes())
+}
+
+// nodeProof generates an inclusion `Proof` for the given `node`.
+func (t *Tree) nodeProof(node *Node) (*Proof, error) {
+	// Fetch the treesize.
+	size, err := t.size()
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch the tree root.
+	root, err := t.root()
+	if err != nil {
+		return nil, err
+	}
+
+	// Climb up the tree and compute the parent hashes using the provided sibling hashes.
+	siblingHashes := make([]*big.Int, t.leafLevel)
+	index := node.Index
+	for level := t.leafLevel; level > 0; level-- {
+		siblingIndex := index + 1 - (index%2)*2
+
+		// Fetch the sibling node hash from the database.
+		siblingHashBytes, err := t.db.Get(t.hashKey(level, siblingIndex))
+		if err != nil && !errors.Is(err, db.ErrNotFound) {
+			return nil, err
+		}
+		siblingHash := new(big.Int).SetBytes(siblingHashBytes)
+
+		// Save the sibling hash.
+		siblingHashes[level-1] = siblingHash
+	}
+
+	// Return the node `Proof`.
+	return &Proof{Root: root, Size: size, Node: node.deepCopy(), SiblingHashes: siblingHashes}, nil
 }

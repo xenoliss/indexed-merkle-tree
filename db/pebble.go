@@ -60,16 +60,6 @@ func (p *PebbleDb) Set(key []byte, value []byte) error {
 	return p.batch.Set(key, value, p.wo)
 }
 
-// ExecAtomicCommitOrDiscard implements Database.
-func (p *PebbleDb) ExecAtomicCommitOrDiscard(fn ExecFn) error {
-	if err := fn(); err != nil {
-		p.discard()
-		return err
-	}
-
-	return p.commit()
-}
-
 // Close implements Database.
 func (p *PebbleDb) Close() error {
 	return p.batch.Close()

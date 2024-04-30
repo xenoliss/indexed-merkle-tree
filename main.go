@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/sha256"
+	"fmt"
 	"imt/db"
 	"imt/imt"
 	"math/big"
@@ -23,17 +24,34 @@ func main() {
 	db := db.NewPebbleDb(pebbleDb)
 	defer db.Close()
 
-	tree := imt.NewTree(db, 32, 4, hash)
+	t := imt.NewTree(db, 32, 4, hash)
 
-	err = tree.Insert(big.NewInt(1), big.NewInt(5))
+	mutateProof, err := t.Set(big.NewInt(1), big.NewInt(5))
 	if err != nil {
 		panic(err)
 	}
 
-	err = tree.Insert(big.NewInt(4), big.NewInt(5))
+	v, err := mutateProof.LnPreUpdateProof.IsValid(t)
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Printf("LnPreUpdateProof is valid: %v\n", v)
+
+	v, err = mutateProof.NodeProof.IsValid(t)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("NodeProof is valid: %v\n", v)
+
+	v, err = mutateProof.LnPostUpdateProof.IsValid(t)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("LnPostUpdateProof is valid: %v\n", v)
+
 }
 
 func hash(v []*big.Int) (*big.Int, error) {
