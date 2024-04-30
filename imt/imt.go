@@ -181,8 +181,10 @@ func (t *Tree) lowNullifierNode(key *big.Int) (*big.Int, *Node, error) {
 
 	// Return the low nullifier key and node.
 	lnKey := new(big.Int).SetBytes(t.nodeKey(new(big.Int).SetBytes(lnKeyBytes)))
-	lnNode := &Node{}
-	lnNode.fromBytes(lnNodeBytes)
+	lnNode, err := NodeFromBytes(lnNodeBytes)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	return lnKey, lnNode, nil
 }

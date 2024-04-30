@@ -18,6 +18,25 @@ func emptyNode() *Node {
 	return &Node{Index: 0, Value: new(big.Int), NextKey: new(big.Int)}
 }
 
+// Deserialize a node from bytes.
+func NodeFromBytes(b []byte) (*Node, error) {
+	i := binary.BigEndian.Uint64(b[0:8])
+
+	b = b[8:]
+	if len(b) < 1 {
+		return nil, errors.New("invalid bytes")
+	}
+	v := new(big.Int).SetBytes(b[1 : 1+b[0]])
+
+	b = b[1+b[0]:]
+	if len(b) < 1 {
+		return nil, errors.New("invalid bytes")
+	}
+	nK := new(big.Int).SetBytes(b[1 : 1+b[0]])
+
+	return &Node{Index: i, Value: v, NextKey: nK}, nil
+}
+
 // Serialize the node into bytes.
 func (n *Node) bytes() []byte {
 	b := binary.BigEndian.AppendUint64([]byte{}, n.Index)
@@ -31,25 +50,6 @@ func (n *Node) bytes() []byte {
 	b = append(b, nextKeyBytes...)
 
 	return b
-}
-
-// Deserialize a node from bytes.
-func (n *Node) fromBytes(b []byte) error {
-	n.Index = binary.BigEndian.Uint64(b[0:8])
-
-	b = b[8:]
-	if len(b) < 1 {
-		return errors.New("invalid bytes")
-	}
-	n.Value = new(big.Int).SetBytes(b[1 : 1+b[0]])
-
-	b = b[1+b[0]:]
-	if len(b) < 1 {
-		return errors.New("invalid bytes")
-	}
-	n.NextKey = new(big.Int).SetBytes(b[1 : 1+b[0]])
-
-	return nil
 }
 
 // Debug print the node.
