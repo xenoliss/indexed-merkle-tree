@@ -36,8 +36,8 @@ func nodeFromBytes(b []byte) (*Node, error) {
 	return &Node{Index: i, Value: v, NextKey: nK}, nil
 }
 
-// deepCopy returns a deep copy of the node.
-func (n *Node) deepCopy() *Node {
+// clone returns a deep copy of the node.
+func (n *Node) clone() *Node {
 	cp := &Node{}
 	cp.Index = n.Index
 	cp.Value = new(big.Int).Set(n.Value)

@@ -272,7 +272,7 @@ func (t *Tree) setNode(key *big.Int, node *Node, isInstertion bool) (*Proof, err
 	}
 
 	// Return the sibling hashes and the final root hash.
-	p := &Proof{Root: h, Size: size, Node: node.deepCopy(), SiblingHashes: siblingHashes}
+	p := &Proof{Root: h, Size: size, Node: node.clone(), SiblingHashes: siblingHashes}
 	return p, nil
 }
 
@@ -308,5 +308,5 @@ func (t *Tree) nodeProof(node *Node) (*Proof, error) {
 	}
 
 	// Return the node `Proof`.
-	return &Proof{Root: root, Size: size, Node: node.deepCopy(), SiblingHashes: siblingHashes}, nil
+	return &Proof{Root: root, Size: size, Node: node.clone(), SiblingHashes: siblingHashes}, nil
 }
