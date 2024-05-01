@@ -126,8 +126,8 @@ func (t *Tree) Update(key, value *big.Int) (*MutateProof, error) {
 	return &MutateProof{LnPreInsertProof: nil, NodeProof: nodeProof, LnPostInsertProof: nil}, nil
 }
 
-// root returns the tree root hash.
-func (t *Tree) root() (*big.Int, error) {
+// Root returns the tree root hash.
+func (t *Tree) Root() (*big.Int, error) {
 	// Get the root hash from the database.
 	rootHash, err := t.db.Get(t.hashKey(0, 0))
 
@@ -143,6 +143,38 @@ func (t *Tree) root() (*big.Int, error) {
 	}
 
 	return new(big.Int).SetBytes(rootHash), nil
+}
+
+// Size returns the size of the tree from the database.
+// It returns 0 if the `sizeKey` is not yet registered.
+func (t *Tree) Size() (uint64, error) {
+	size, err := t.db.Get(sizeKey)
+	if errors.Is(err, db.ErrNotFound) {
+		return 0, nil
+	}
+
+	if err != nil {
+		return 0, err
+	}
+
+	return new(big.Int).SetBytes(size).Uint64(), nil
+}
+
+// ProveInclusion returns a proof that the given `key` is included in the tree.
+func (t *Tree) ProveInclusion(key *big.Int) (*Proof, error) {
+	// Fetch and deserialize the node from the database.
+	nodeBytes, err := t.db.Get(t.nodeKey(key))
+	if err != nil {
+		return nil, err
+	}
+
+	node, err := nodeFromBytes(nodeBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return the node proof.
+	return t.nodeProof(node)
 }
 
 // nodeKey returns the key to store a node.
@@ -162,26 +194,11 @@ func (t *Tree) hashKey(level uint8, index uint64) []byte {
 	return binary.BigEndian.AppendUint64(prefix, index)
 }
 
-// size returns the size of the tree from the database.
-// It returns 0 if the `sizeKey` is not yet registered.
-func (t *Tree) size() (uint64, error) {
-	size, err := t.db.Get(sizeKey)
-	if errors.Is(err, db.ErrNotFound) {
-		return 0, nil
-	}
-
-	if err != nil {
-		return 0, err
-	}
-
-	return new(big.Int).SetBytes(size).Uint64(), nil
-}
-
-// lowNullifierNode fecths the low nuliffier node for the given `key`.
+// lowNullifierNode fetchs the low nuliffier node for the given `key`.
 // It returns the low nuliffier key and node and the `Proof` for it.
 func (t *Tree) lowNullifierNode(key *big.Int) (*big.Int, *Node, *Proof, error) {
 	// Fetch the tree size from the database.
-	size, err := t.size()
+	size, err := t.Size()
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -210,7 +227,7 @@ func (t *Tree) lowNullifierNode(key *big.Int) (*big.Int, *Node, *Proof, error) {
 		return nil, nil, nil, errors.New("unexpected nil low nullifier")
 	}
 
-	// Return the low nullifier key and node.
+	// Deserialize the low nullifier key and node.
 	lnKey := new(big.Int).SetBytes(t.nodeKey(new(big.Int).SetBytes(lnKeyBytes)))
 	lnNode, err := nodeFromBytes(lnNodeBytes)
 	if err != nil {
@@ -223,13 +240,14 @@ func (t *Tree) lowNullifierNode(key *big.Int) (*big.Int, *Node, *Proof, error) {
 		return nil, nil, nil, err
 	}
 
+	// Returns the ln key, node and proof.
 	return lnKey, lnNode, proof, nil
 }
 
 // setNode sets a node in the tree.
 // Returns a `Proof` fof the given node.
 func (t *Tree) setNode(key *big.Int, node *Node, isInstertion bool) (*Proof, error) {
-	size, err := t.size()
+	size, err := t.Size()
 	if err != nil {
 		return nil, err
 	}
@@ -309,13 +327,13 @@ func (t *Tree) setNode(key *big.Int, node *Node, isInstertion bool) (*Proof, err
 // nodeProof generates an inclusion `Proof` for the given `node`.
 func (t *Tree) nodeProof(node *Node) (*Proof, error) {
 	// Fetch the treesize.
-	size, err := t.size()
+	size, err := t.Size()
 	if err != nil {
 		return nil, err
 	}
 
 	// Fetch the tree root.
-	root, err := t.root()
+	root, err := t.Root()
 	if err != nil {
 		return nil, err
 	}
