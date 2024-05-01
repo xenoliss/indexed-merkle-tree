@@ -21,7 +21,7 @@ func (p *Proof) IsValid(t *Tree) (bool, error) {
 		return false, err
 	}
 
-	// If the tree is empty, the root must be the hash of the initial state node.
+	// If the tree is empty, the root must be the hash of the 0 index node.
 	if p.Size == 0 {
 		return p.Node.Index == 0 &&
 			p.Node.Value.Cmp(zeroBn) == 0 &&
@@ -50,7 +50,25 @@ func (p *Proof) IsValid(t *Tree) (bool, error) {
 }
 
 type MutateProof struct {
-	LnPreUpdateProof  *Proof
+	LnPreInsertProof  *Proof
+	LnPostInsertProof *Proof
 	NodeProof         *Proof
-	LnPostUpdateProof *Proof
+}
+
+func (p *MutateProof) IsValid(t *Tree) (bool, error) {
+	if p.LnPreInsertProof != nil {
+		valid, err := p.LnPreInsertProof.IsValid(t)
+		if !valid || err != nil {
+			return false, err
+		}
+	}
+
+	if p.LnPostInsertProof != nil {
+		valid, err := p.LnPostInsertProof.IsValid(t)
+		if !valid || err != nil {
+			return false, err
+		}
+	}
+
+	return p.NodeProof.IsValid(t)
 }

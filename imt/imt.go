@@ -42,10 +42,9 @@ func NewTree(db db.Database, feLen, leafLevel uint8, hashFn HashFn) *Tree {
 	}
 }
 
-// Set sets the `value` for the given `key` in the tree. It returns a `MutateProof` corresponding
-// to the state update.
+// Set sets the `value` for the given `key` in the tree.
+// It returns a `MutateProof` corresponding to the state update.
 func (t *Tree) Set(key, value *big.Int) (*MutateProof, error) {
-	// Check if the key already exists and if not set the `isInsertion` flag to true.
 	nodeBytes, err := t.db.Get(t.nodeKey(key))
 
 	// Return on unexpected errors.
@@ -60,40 +59,71 @@ func (t *Tree) Set(key, value *big.Int) (*MutateProof, error) {
 		return nil, fmt.Errorf("unexpected nil value for %v", key)
 	}
 
+	if isInsertion {
+		return t.Insert(key, value)
+	} else {
+		return t.Update(key, value)
+	}
+}
+
+// Insert inserts `key` and `value` pair in the tree.
+// It returns a `MutateProof` corresponding to the state update.
+func (t *Tree) Insert(key, value *big.Int) (*MutateProof, error) {
+	// Ensure the key does not already exist.
+	_, err := t.db.Get(t.nodeKey(key))
+	if !errors.Is(err, db.ErrNotFound) {
+		return nil, err
+	}
+
 	// Lookup the low nullifier node.
-	lnKey, lnNode, lnPreUpdateProof, err := t.lowNullifierNode(key)
+	lnKey, lnNode, lnPreInsertProof, err := t.lowNullifierNode(key)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build the node to set.
-	// NOTE: For insertion leave the default `Index` as it will be set to the updated tree size in `setNode`.
-	var node *Node
-	if isInsertion {
-		node = &Node{Value: value, NextKey: lnNode.NextKey}
-	} else {
-		node, err = nodeFromBytes(nodeBytes)
-		if err != nil {
-			return nil, err
-		}
+	// Build the node to insert.
+	// NOTE: Leave the default `Index` as it will be set to the updated tree size in `setNode`.
+	node := &Node{Value: value, NextKey: lnNode.NextKey}
 
-		node.Value = value
-	}
-
-	// Set the node.
-	nodeProof, err := t.setNode(key, node, isInsertion)
+	// Insert the new node.
+	nodeProof, err := t.setNode(key, node, true)
 	if err != nil {
 		return nil, err
 	}
 
 	// Update the low nullifier node and save it in the database.
 	lnNode.NextKey = key
-	lnPostUpdateProof, err := t.setNode(lnKey, lnNode, false)
+	lnPostInsertProof, err := t.setNode(lnKey, lnNode, false)
 	if err != nil {
 		return nil, err
 	}
 
-	return &MutateProof{LnPreUpdateProof: lnPreUpdateProof, NodeProof: nodeProof, LnPostUpdateProof: lnPostUpdateProof}, nil
+	return &MutateProof{LnPreInsertProof: lnPreInsertProof, LnPostInsertProof: lnPostInsertProof, NodeProof: nodeProof}, nil
+}
+
+// Update updates the `value` at `key` in the tree.
+// It returns a `MutateProof` corresponding to the state update.
+func (t *Tree) Update(key, value *big.Int) (*MutateProof, error) {
+	// Fetch the node from the database.
+	nodeBytes, err := t.db.Get(t.nodeKey(key))
+	if err != nil {
+		return nil, err
+	}
+
+	// Update the node.
+	node, err := nodeFromBytes(nodeBytes)
+	if err != nil {
+		return nil, err
+	}
+	node.Value = value
+
+	// Set the node.
+	nodeProof, err := t.setNode(key, node, false)
+	if err != nil {
+		return nil, err
+	}
+
+	return &MutateProof{LnPreInsertProof: nil, NodeProof: nodeProof, LnPostInsertProof: nil}, nil
 }
 
 // root returns the tree root hash.

@@ -26,31 +26,29 @@ func main() {
 
 	t := imt.NewTree(db, 32, 4, hash)
 
-	mutateProof, err := t.Set(big.NewInt(1), big.NewInt(5))
+	p1, err := t.Set(big.NewInt(1), big.NewInt(5))
 	if err != nil {
 		panic(err)
 	}
 
-	v, err := mutateProof.LnPreUpdateProof.IsValid(t)
+	valid, err := p1.IsValid(t)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("LnPreUpdateProof is valid: %v\n", v)
+	fmt.Printf("p1 valid: %v\n", valid)
 
-	v, err = mutateProof.NodeProof.IsValid(t)
+	p2, err := t.Set(big.NewInt(1), big.NewInt(5))
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("NodeProof is valid: %v\n", v)
-
-	v, err = mutateProof.LnPostUpdateProof.IsValid(t)
+	valid, err = p2.IsValid(t)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("LnPostUpdateProof is valid: %v\n", v)
+	fmt.Printf("p2 valid: %v\n", valid)
 
 }
 
