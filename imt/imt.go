@@ -32,7 +32,7 @@ type Tree struct {
 	hashFn HashFn
 }
 
-// Instanciate a new tree.
+// NewTree instanciates a new tree.
 func NewTree(db db.Database, feLen, leafLevel uint8, hashFn HashFn) *Tree {
 	return &Tree{
 		db:        db,
@@ -96,7 +96,7 @@ func (t *Tree) Set(key, value *big.Int) (*MutateProof, error) {
 	return &MutateProof{LnPreUpdateProof: lnPreUpdateProof, NodeProof: nodeProof, LnPostUpdateProof: lnPostUpdateProof}, nil
 }
 
-// Return the tree root hash.
+// root returns the tree root hash.
 func (t *Tree) root() (*big.Int, error) {
 	// Get the root hash from the database.
 	rootHash, err := t.db.Get(t.hashKey(0, 0))
@@ -115,7 +115,7 @@ func (t *Tree) root() (*big.Int, error) {
 	return new(big.Int).SetBytes(rootHash), nil
 }
 
-// Returns the key to store a node.
+// nodeKey returns the key to store a node.
 func (t *Tree) nodeKey(key *big.Int) []byte {
 	b := key.Bytes()
 	prefix := make([]byte, 1+int(t.feLen)-len(b))
@@ -123,7 +123,7 @@ func (t *Tree) nodeKey(key *big.Int) []byte {
 	return append(prefix, b...)
 }
 
-// Returns the key to store a hash for the `level` and `index` pair.
+// hashKey returns the key to store a hash for the `level` and `index` pair.
 // NOTE: The `index` correspond to the hash index within the level.
 func (t *Tree) hashKey(level uint8, index uint64) []byte {
 	prefix := make([]byte, 1+8)
@@ -133,7 +133,7 @@ func (t *Tree) hashKey(level uint8, index uint64) []byte {
 }
 
 // size returns the size of the tree from the database.
-// Returns 0 if the `sizeKey` is not yet registered.
+// It returns 0 if the `sizeKey` is not yet registered.
 func (t *Tree) size() (uint64, error) {
 	size, err := t.db.Get(sizeKey)
 	if errors.Is(err, db.ErrNotFound) {
@@ -148,7 +148,7 @@ func (t *Tree) size() (uint64, error) {
 }
 
 // lowNullifierNode fecths the low nuliffier node for the given `key`.
-// It return the low nuliffier key and node and the `Proof` for it.
+// It returns the low nuliffier key and node and the `Proof` for it.
 func (t *Tree) lowNullifierNode(key *big.Int) (*big.Int, *Node, *Proof, error) {
 	// Fetch the tree size from the database.
 	size, err := t.size()
@@ -196,7 +196,7 @@ func (t *Tree) lowNullifierNode(key *big.Int) (*big.Int, *Node, *Proof, error) {
 	return lnKey, lnNode, proof, nil
 }
 
-// Sets a node in the tree.
+// setNode sets a node in the tree.
 // Returns a `Proof` fof the given node.
 func (t *Tree) setNode(key *big.Int, node *Node, isInstertion bool) (*Proof, error) {
 	size, err := t.size()
@@ -207,7 +207,7 @@ func (t *Tree) setNode(key *big.Int, node *Node, isInstertion bool) (*Proof, err
 	// In case of insertion, increase the size of the tree and set the node `Index` to the it.
 	if isInstertion {
 		size += 1
-		if err := t.setSize(size); err != nil {
+		if err := t.db.Set(sizeKey, new(big.Int).SetUint64(size).Bytes()); err != nil {
 			return nil, err
 		}
 
@@ -274,11 +274,6 @@ func (t *Tree) setNode(key *big.Int, node *Node, isInstertion bool) (*Proof, err
 	// Return the sibling hashes and the final root hash.
 	p := &Proof{Root: h, Size: size, Node: node.deepCopy(), SiblingHashes: siblingHashes}
 	return p, nil
-}
-
-// Store the tree size in the database.
-func (t *Tree) setSize(s uint64) error {
-	return t.db.Set(sizeKey, new(big.Int).SetUint64(s).Bytes())
 }
 
 // nodeProof generates an inclusion `Proof` for the given `node`.
