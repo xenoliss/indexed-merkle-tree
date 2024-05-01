@@ -7,8 +7,14 @@ import (
 )
 
 type Node struct {
-	Index   uint64
-	Value   *big.Int
+	// The index of the node in the IMT.
+	Index uint64
+
+	// The node arbitrary value.
+	Value *big.Int
+
+	// Pointer to the next node key.
+	// Nodes are organized in a linked list sorted in ascending order base on their key.
 	NextKey *big.Int
 }
 

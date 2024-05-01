@@ -5,9 +5,16 @@ import (
 )
 
 type Proof struct {
-	Root          *big.Int
-	Size          uint64
-	Node          *Node
+	// The root of the tree.
+	Root *big.Int
+
+	// The size of the tree.
+	Size uint64
+
+	// The node being proved.
+	Node *Node
+
+	// The merkle path of sibling hashes.
 	SiblingHashes []*big.Int
 }
 
@@ -50,9 +57,16 @@ func (p *Proof) IsValid(t *Tree) (bool, error) {
 }
 
 type MutateProof struct {
-	LnPreInsertProof  *Proof
+	// The low nullifier inclusion proof before inserting the new key in the tree.
+	// Nil if the mutation is not an instertion.
+	LnPreInsertProof *Proof
+
+	// The low nullifier inclusion proof before inserting the new key in the tree.
+	// Nil if the mutation is not an instertion.
 	LnPostInsertProof *Proof
-	NodeProof         *Proof
+
+	// The inserted/updated node proof.
+	NodeProof *Proof
 }
 
 func (p *MutateProof) IsValid(t *Tree) (bool, error) {

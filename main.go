@@ -49,7 +49,6 @@ func main() {
 	}
 
 	fmt.Printf("p2 valid: %v\n", valid)
-
 }
 
 func hash(v []*big.Int) (*big.Int, error) {
