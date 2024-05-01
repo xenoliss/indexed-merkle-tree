@@ -65,8 +65,8 @@ func (p *PebbleDb) Close() error {
 	return p.batch.Close()
 }
 
-// Commit commits the pending batch changes.
-func (p *PebbleDb) commit() error {
+// Commit implements Database.
+func (p *PebbleDb) Commit() error {
 	err := p.batch.Commit(p.wo)
 	if err != nil {
 		return err
@@ -76,8 +76,8 @@ func (p *PebbleDb) commit() error {
 	return nil
 }
 
-// Discard discards the pending batch changes.
-func (p *PebbleDb) discard() {
+// Discard implements Database.
+func (p *PebbleDb) Discard() {
 	p.batch.Reset()
 }
 

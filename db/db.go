@@ -17,6 +17,12 @@ type Database interface {
 	// Set sets the `value` for the given `key`.
 	Set(key []byte, value []byte) error
 
+	// Commit commits the pending batch changes.
+	Commit() error
+
+	// Discard discards the pending batch changes.
+	Discard()
+
 	// Close the database and release its resources.
 	Close() error
 }
