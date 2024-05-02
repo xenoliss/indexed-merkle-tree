@@ -4,6 +4,8 @@ import (
 	"math/big"
 )
 
+var zeroBn = big.NewInt(0)
+
 type Proof struct {
 	// The root of the tree.
 	Root *big.Int
@@ -31,7 +33,7 @@ func (p *Proof) IsValid(t *Tree) (bool, error) {
 	for level := t.leafLevel; level > 0; {
 		// If the sibling hash does not exist (because the sibling subtree is empty), keep the hash as is.
 		siblingHash := p.SiblingHashes[level-1]
-		if siblingHash != nil {
+		if siblingHash.Cmp(zeroBn) != 0 {
 			// Compute the parent hash when the sibling hash exists.
 			if index%2 == 0 {
 				h, err = t.hashFn([]*big.Int{h, siblingHash})
