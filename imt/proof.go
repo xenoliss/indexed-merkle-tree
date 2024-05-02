@@ -18,8 +18,6 @@ type Proof struct {
 	SiblingHashes []*big.Int
 }
 
-// var zeroBn = new(big.Int)
-
 // isValid returns `true` if the `Proof` is a valid proof for the given tree.
 func (p *Proof) IsValid(t *Tree) (bool, error) {
 	// Start with the node hash.
@@ -30,24 +28,25 @@ func (p *Proof) IsValid(t *Tree) (bool, error) {
 
 	// Climb up the tree and compute the parent hashes using the provided sibling hashes.
 	index := p.Node.Index
-	for level := t.leafLevel; level > 0; level-- {
-		siblingHash := p.SiblingHashes[level-1]
-
+	for level := t.leafLevel; level > 0; {
 		// If the sibling hash does not exist (because the sibling subtree is empty), keep the hash as is.
-		if siblingHash == nil {
-			continue
+		siblingHash := p.SiblingHashes[level-1]
+		if siblingHash != nil {
+			// Compute the parent hash when the sibling hash exists.
+			if index%2 == 0 {
+				h, err = t.hashFn([]*big.Int{h, siblingHash})
+			} else {
+				h, err = t.hashFn([]*big.Int{siblingHash, h})
+			}
+
+			if err != nil {
+				return false, err
+			}
 		}
 
-		// Compute the parent hash when the sibling hash exists.
-		if index%2 == 0 {
-			h, err = t.hashFn([]*big.Int{h, siblingHash})
-		} else {
-			h, err = t.hashFn([]*big.Int{siblingHash, h})
-		}
-
-		if err != nil {
-			return false, err
-		}
+		// Climb up in the tree.
+		level--
+		index /= 2
 	}
 
 	// Compare it with the root hash.

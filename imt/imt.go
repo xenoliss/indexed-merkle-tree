@@ -299,7 +299,7 @@ func (t *Tree) setNode(key *big.Int, node *Node, isInstertion bool) (*Proof, err
 
 		// Climb up in the tree.
 		level--
-		index = index / 2
+		index /= 2
 
 		if level == 0 && index != 0 {
 			return nil, errors.New("tree is over capacity")
@@ -333,7 +333,7 @@ func (t *Tree) nodeProof(node *Node) (*Proof, error) {
 	// Climb up the tree and collect the sibling hashes.
 	siblingHashes := make([]*big.Int, t.leafLevel)
 	index := node.Index
-	for level := t.leafLevel; level > 0; level-- {
+	for level := t.leafLevel; level > 0; {
 		siblingIndex := index + 1 - (index%2)*2
 
 		// Fetch the sibling node hash from the database and register it.
@@ -345,6 +345,10 @@ func (t *Tree) nodeProof(node *Node) (*Proof, error) {
 		} else if !errors.Is(err, db.ErrNotFound) {
 			return nil, err
 		}
+
+		// Climb up in the tree.
+		level--
+		index /= 2
 	}
 
 	// Return the node `Proof`.

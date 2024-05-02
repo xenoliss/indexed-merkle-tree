@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/sha256"
-	"fmt"
 	"imt/db"
 	"imt/imt"
 	"math/big"
@@ -26,17 +25,28 @@ func main() {
 
 	t := imt.NewTree(db, 32, 4, hash)
 
-	p1, err := t.Set(big.NewInt(1), big.NewInt(5))
+	setAndValidate(t, big.NewInt(1), big.NewInt(5))
+	setAndValidate(t, big.NewInt(5), big.NewInt(5))
+	setAndValidate(t, big.NewInt(3), big.NewInt(5))
+	setAndValidate(t, big.NewInt(4), big.NewInt(5))
+	setAndValidate(t, big.NewInt(10), big.NewInt(5))
+}
+
+func setAndValidate(t *imt.Tree, key, value *big.Int) {
+	proof, err := t.Set(key, value)
 	if err != nil {
 		panic(err)
 	}
 
-	valid, err := p1.IsValid(t)
+	valid, err := proof.IsValid(t)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("p1 valid: %v\n", valid)
+	if !valid {
+		panic("Validation failed")
+	}
+
 }
 
 func hash(v []*big.Int) (*big.Int, error) {
