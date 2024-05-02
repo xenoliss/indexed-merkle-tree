@@ -3,7 +3,6 @@ package imt
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"imt/db"
 	"math/big"
 )
@@ -52,13 +51,7 @@ func (t *Tree) Set(key, value *big.Int) (*MutateProof, error) {
 		return nil, err
 	}
 
-	// If no error is returned, `nodeBytes` must not be nil.
-	// NOTE: This is a safe guard but it should never happen due to how `db.Database.Get` is implemented.
 	isInsertion := nodeBytes == nil
-	if err == nil && isInsertion {
-		return nil, fmt.Errorf("unexpected nil value for %v", key)
-	}
-
 	if isInsertion {
 		return t.Insert(key, value)
 	} else {
@@ -223,10 +216,6 @@ func (t *Tree) lowNullifierNode(key *big.Int) (*big.Int, *Node, *Proof, error) {
 		return nil, nil, nil, err
 	}
 
-	if lnNodeBytes == nil {
-		return nil, nil, nil, errors.New("unexpected nil low nullifier")
-	}
-
 	// Deserialize the low nullifier key and node.
 	lnKey := new(big.Int).SetBytes(t.nodeKey(new(big.Int).SetBytes(lnKeyBytes)))
 	lnNode, err := nodeFromBytes(lnNodeBytes)
@@ -286,22 +275,25 @@ func (t *Tree) setNode(key *big.Int, node *Node, isInstertion bool) (*Proof, err
 
 		// Fetch the sibling node hash from the database
 		siblingHashBytes, err := t.db.Get(t.hashKey(level, siblingIndex))
-		if err != nil && !errors.Is(err, db.ErrNotFound) {
-			return nil, err
-		}
 
-		siblingHash := new(big.Int).SetBytes(siblingHashBytes)
+		// If the sibling hash exists, use it to compute the parent hash.
+		// NOTE: if the sibling hash does not exist (because the sibling subtree is empty), keep the hash as is.
+		if err == nil {
+			// Save the sibling hash.
+			siblingHash := new(big.Int).SetBytes(siblingHashBytes)
+			siblingHashes[level-1] = siblingHash
 
-		// Save the sibling hash.
-		siblingHashes[level-1] = siblingHash
+			// Compute the parent hash.
+			if index%2 == 0 {
+				h, err = t.hashFn([]*big.Int{h, siblingHash})
+			} else {
+				h, err = t.hashFn([]*big.Int{siblingHash, h})
+			}
 
-		// Compute the parent hash.
-		if index%2 == 0 {
-			h, err = t.hashFn([]*big.Int{h, siblingHash})
-		} else {
-			h, err = t.hashFn([]*big.Int{siblingHash, h})
-		}
-		if err != nil {
+			if err != nil {
+				return nil, err
+			}
+		} else if !errors.Is(err, db.ErrNotFound) {
 			return nil, err
 		}
 
@@ -338,21 +330,21 @@ func (t *Tree) nodeProof(node *Node) (*Proof, error) {
 		return nil, err
 	}
 
-	// Climb up the tree and compute the parent hashes using the provided sibling hashes.
+	// Climb up the tree and collect the sibling hashes.
 	siblingHashes := make([]*big.Int, t.leafLevel)
 	index := node.Index
 	for level := t.leafLevel; level > 0; level-- {
 		siblingIndex := index + 1 - (index%2)*2
 
-		// Fetch the sibling node hash from the database.
+		// Fetch the sibling node hash from the database and register it.
+		// NOTE: if the sibling hash does not exist skip it (leave the index as nil) as its entire subtree is empty.
 		siblingHashBytes, err := t.db.Get(t.hashKey(level, siblingIndex))
-		if err != nil && !errors.Is(err, db.ErrNotFound) {
+		if err == nil {
+			siblingHash := new(big.Int).SetBytes(siblingHashBytes)
+			siblingHashes[level-1] = siblingHash
+		} else if !errors.Is(err, db.ErrNotFound) {
 			return nil, err
 		}
-		siblingHash := new(big.Int).SetBytes(siblingHashBytes)
-
-		// Save the sibling hash.
-		siblingHashes[level-1] = siblingHash
 	}
 
 	// Return the node `Proof`.

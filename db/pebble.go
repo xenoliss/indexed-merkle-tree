@@ -43,7 +43,7 @@ func (p *PebbleDb) GetLT(ltKey []byte) ([]byte, []byte, error) {
 	defer iter.Close()
 
 	if !iter.SeekLT(ltKey) {
-		return nil, nil, nil
+		return nil, nil, ErrNotFound
 	}
 
 	k := iter.Key()

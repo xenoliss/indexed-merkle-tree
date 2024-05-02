@@ -37,18 +37,6 @@ func main() {
 	}
 
 	fmt.Printf("p1 valid: %v\n", valid)
-
-	p2, err := t.Set(big.NewInt(1), big.NewInt(5))
-	if err != nil {
-		panic(err)
-	}
-
-	valid, err = p2.IsValid(t)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("p2 valid: %v\n", valid)
 }
 
 func hash(v []*big.Int) (*big.Int, error) {

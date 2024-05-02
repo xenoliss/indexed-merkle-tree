@@ -11,7 +11,8 @@ type Database interface {
 	// exist, returns the error `ErrNotFound`.
 	Get(key []byte) ([]byte, error)
 
-	// GetLT retrieves the key and value less than the given key.
+	// GetLT retrieves the key and value less than the given key. If no key value exist
+	// below `ltKey`, returns the error `ErrNotFound`.
 	GetLT(ltKey []byte) ([]byte, []byte, error)
 
 	// Set sets the `value` for the given `key`.

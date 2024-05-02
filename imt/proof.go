@@ -18,7 +18,7 @@ type Proof struct {
 	SiblingHashes []*big.Int
 }
 
-var zeroBn = new(big.Int)
+// var zeroBn = new(big.Int)
 
 // isValid returns `true` if the `Proof` is a valid proof for the given tree.
 func (p *Proof) IsValid(t *Tree) (bool, error) {
@@ -28,19 +28,17 @@ func (p *Proof) IsValid(t *Tree) (bool, error) {
 		return false, err
 	}
 
-	// If the tree is empty, the root must be the hash of the 0 index node.
-	if p.Size == 0 {
-		return p.Node.Index == 0 &&
-			p.Node.Value.Cmp(zeroBn) == 0 &&
-			p.Node.NextKey.Cmp(zeroBn) == 0 &&
-			h.Cmp(p.Root) == 0, nil
-	}
-
 	// Climb up the tree and compute the parent hashes using the provided sibling hashes.
 	index := p.Node.Index
 	for level := t.leafLevel; level > 0; level-- {
 		siblingHash := p.SiblingHashes[level-1]
 
+		// If the sibling hash does not exist (because the sibling subtree is empty), keep the hash as is.
+		if siblingHash == nil {
+			continue
+		}
+
+		// Compute the parent hash when the sibling hash exists.
 		if index%2 == 0 {
 			h, err = t.hashFn([]*big.Int{h, siblingHash})
 		} else {
